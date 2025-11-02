@@ -1,0 +1,63 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# project results
+projects/*/results
+projects/test_single_artery/*
+projects/archive
+
+projects/cerebral/3D_model_resutls/*
+projects/*/plots
+projects/simple_run/literature_results/*
+
+# models
+models/archieve/*
+
+# pilot code
+pilot_matlab/*
+
+# other files
+*.xlsx
+*.xls
+*.pptx
+*.ppt
+*.txt
+*.res
+*.nb
+*.rar
+*.pdf
+*.svg
+*.docx
+
+# Ignore full dataset
+CoW_Centerline_Data/
