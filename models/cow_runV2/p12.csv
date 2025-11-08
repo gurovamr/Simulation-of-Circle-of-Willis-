@@ -1,0 +1,2 @@
+id_start,id_end,length,diameter,wall_thickness,E1,E2,eta
+N493,N545,1.541,0.46,0.046,4000000.0,800000.0,5000.0

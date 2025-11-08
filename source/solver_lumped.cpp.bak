@@ -380,29 +380,23 @@ void solver_lumped::build_system()
 //--------------------------------------------------------------
 int solver_lumped::node_id_to_index(string node_id)
 {
-	int idx = -1;
-	for(int i = 0; i < number_of_nodes; ++i)
+	int i=0, idx=-1;
+	bool got_it=false;
+	while(i<number_of_nodes && !got_it)
 	{
-		if(nodes[i]->name == node_id)
+		if(node_id.compare(nodes[i]->name) == 0)
 		{
+			got_it = true;
 			idx = i;
-			break;
 		}
+		i++;
 	}
 	if(idx == -1)
 	{
-		cout << "\n!!! WARNING !!!\nsolver_lumped::node_id_to_index\nNode not found: " << node_id << endl;
-		cout << "List of available nodes in this lumped model:" << endl;
-		for(int i = 0; i < number_of_nodes; ++i)
-		{
-			cout << " - " << nodes[i]->name << endl;
-		}
-		cout << "Continuing..." << endl;
+		cout << "\n !!!WARNING!!!\n solver_lumped::node_id_to_index function\nNode is not existing, node_id: " << node_id << "\n Continouing..." << endl;
 	}
 	return idx;
 }
-
-
 
 //--------------------------------------------------------------
 int solver_lumped::edge_id_to_index(string edge_id)
