@@ -132,11 +132,13 @@ bool first_blood::load_main_csv()
                 }
                 nl++;
             }
+
             else if(sv[0] == "node")
             {
                 nodes.push_back(sv[1]);
                 nn++;
             }
+
         }
         load_ok = true;
     }

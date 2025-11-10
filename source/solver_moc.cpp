@@ -41,6 +41,9 @@ void solver_moc::initialization(double p_init, int material_type)
 		sum_division_points += edges[i]->division_points;
 	}
 
+	std::cout << "[DEBUG] number_of_nodes=" << number_of_nodes
+          << " number_of_edges=" << number_of_edges << std::endl;
+
 	// building up the topology
 	build_system();
 

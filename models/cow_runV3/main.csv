@@ -6,6 +6,7 @@ solver,maccormack
 type,name,main node,model node,main node,model node,main node,model node
 moc,arterial,N15,p1,N51,p2,N59,p3,N141,p4,N107,p5,N187,p6,N238,p7,N206,p8,N332,p9,N389,p10,N368,p11,N394,p12,N426,p13,N493,p14,N545,p15,N527,p16,N554,p17,N591,p18,N619,p19,N639,p20,N646,p21,N679,p22,N738,p23,N916,p24,N689,p25,N772,p26,N809,p27,N884,p28,N848,p29
 
+
 lumped,p1,N15,N15
 lumped,p2,N51,N51
 lumped,p3,N59,N59
