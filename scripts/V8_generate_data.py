@@ -22,9 +22,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 ARTERIAL_CSV = os.path.join(OUTPUT_DIR, "arterial.csv")
 MAIN_CSV     = os.path.join(OUTPUT_DIR, "main.csv")
 
-# Path to reference heart model (from Abel_ref2)
-HEART_SRC = "../models/Abel_ref2/heart_kim_lit.csv"
-HEART_DST = os.path.join(OUTPUT_DIR, "heart_kim_lit.csv")
+# Where to copy the heart model from
+ABEL_HEART = "../models/Abel_ref2/heart_kim_lit.csv"
+COW_HEART  = os.path.join(OUTPUT_DIR, "heart_kim_lit.csv")
 
 
 # -------------------------------------------------------------
@@ -35,13 +35,13 @@ def wall_thickness(radius_m: float) -> float:
 
 def default_material():
     return dict(
-        elastance_1=5.0e5,
-        res_start=0.0,
-        res_end=0.0,
-        visc_fact=2.75,
-        k1=2.0e6,
-        k2=-2253.0,
-        k3=8.65e4
+        elastance_1 = 5.0e5,
+        res_start   = 0.0,
+        res_end     = 0.0,
+        visc_fact   = 2.75,
+        k1          = 2.0e6,
+        k2          = -2253.0,
+        k3          = 8.65e4,
     )
 
 def si(mm: float) -> float:
@@ -56,12 +56,11 @@ def load_json(path: str):
 # Load patient data
 # -------------------------------------------------------------
 feature_data = load_json(FEATURE_FILE)
-nodes_data   = load_json(NODES_FILE)      # not used directly, kept for completeness
+nodes_data   = load_json(NODES_FILE)      # not used directly
 variant_data = load_json(VARIANT_FILE)   # not used directly
 
-
 # -------------------------------------------------------------
-# Create arterial.csv (1D geometry + node + perif + heart)
+# Build 1D arterial network from feature_data
 # -------------------------------------------------------------
 arterial_header = [
     "type","ID","name","start_node","end_node",
@@ -77,7 +76,6 @@ constants = default_material()
 
 for group_id, segments in feature_data.items():
     for vessel_name, vessel_list in segments.items():
-        # skip bifurcation helper entries
         if "bifurcation" in vessel_name.lower():
             continue
 
@@ -111,36 +109,14 @@ for group_id, segments in feature_data.items():
                 "k3[SI]": constants["k3"],
             })
 
-# gather unique 1D nodes
+# Collect unique 1D nodes
 unique_nodes_1d = sorted({a["start_node"] for a in arteries} |
                          {a["end_node"]   for a in arteries})
 
-# write arterial.csv
-with open(ARTERIAL_CSV, "w", newline="") as f:
-    writer = csv.DictWriter(f, fieldnames=arterial_header)
-    writer.writeheader()
-    for row in arteries:
-        writer.writerow(row)
-
-    # blank line before node/perif/heart table
-    f.write("\n")
-    f.write("type,ID,name,valami,parameter,file name\n")
-
-    # node lines
-    for n in unique_nodes_1d:
-        f.write(f"node,{n},0,,\n")
-
-    # heart line: follow Abel_ref2 style: heart,H,0,
-    f.write("heart,H,0,,\n")
-
-    # perif lines will be appended later once we know outlets
-    # (we will reopen and append)
-
-print(f"[OK] V8: arterial.csv written with {len(arteries)} arteries and {len(unique_nodes_1d)} 1D nodes")
-
+print(f"[OK] V8: 1D network has {len(arteries)} arteries and {len(unique_nodes_1d)} nodes.")
 
 # -------------------------------------------------------------
-# Detect terminal 1D nodes (degree=1)
+# Detect terminal 1D nodes (degree = 1)
 # -------------------------------------------------------------
 degree = {}
 for art in arteries:
@@ -150,31 +126,51 @@ for art in arteries:
     degree[e] = degree.get(e, 0) + 1
 
 terminal_nodes = sorted([n for n, d in degree.items() if d == 1])
-print(f"[INFO] V8: detected terminal nodes: {terminal_nodes}")
 
-# Use N15 as inlet (heart connection) if present
-INLET_NODE = "N15"
-if INLET_NODE not in terminal_nodes:
-    print(f"[WARN] inlet node {INLET_NODE} not found among terminals, using it anyway as heart inlet (if exists).")
+print(f"[INFO] V8: raw terminal nodes = {terminal_nodes}")
 
-# Outlets = all terminal nodes except inlet
-outlet_nodes = [n for n in terminal_nodes if n != INLET_NODE]
-print(f"[INFO] V8: using {INLET_NODE} as heart inlet node.")
+# Choose heart inlet = N15 (as you requested), the rest are outlets
+HEART_INLET = "N15"
+if HEART_INLET not in unique_nodes_1d:
+    raise RuntimeError(f"Chosen heart inlet {HEART_INLET} is not a 1D node in this network.")
+
+if HEART_INLET not in terminal_nodes:
+    print(f"[WARN] V8: {HEART_INLET} is not degree-1, but we will still use it as heart inlet.")
+
+outlet_nodes = [n for n in terminal_nodes if n != HEART_INLET]
+print(f"[INFO] V8: using {HEART_INLET} as heart inlet.")
 print(f"[INFO] V8: using {len(outlet_nodes)} outlet nodes for Windkessels:")
 print("       ", outlet_nodes)
 
-# append perif lines for each outlet to arterial.csv
-with open(ARTERIAL_CSV, "a", newline="") as f:
-    # each perif line: perif,pX,0,,
-    for i, _ in enumerate(outlet_nodes, start=1):
-        pid = f"p{i}"
+# -------------------------------------------------------------
+# Write arterial.csv
+# -------------------------------------------------------------
+with open(ARTERIAL_CSV, "w", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=arterial_header)
+    writer.writeheader()
+    for row in arteries:
+        writer.writerow(row)
+
+    # Blank line before node/perif table
+    f.write("\n")
+    f.write("type,ID,name,valami,parameter,file name\n")
+
+    # Optional: register heart model (like Abel_ref2)
+    f.write("heart,heart_kim_lit,0,,\n")
+
+    # All 1D nodes
+    for n in unique_nodes_1d:
+        f.write(f"node,{n},0,,\n")
+
+    # perif rows: one ID per outlet
+    for i, n in enumerate(outlet_nodes):
+        pid = f"p{i+1}"
         f.write(f"perif,{pid},0,,\n")
 
-print(f"[OK] V8: appended {len(outlet_nodes)} perif lines to arterial.csv")
-
+print(f"[OK] V8: arterial.csv written to {ARTERIAL_CSV}")
 
 # -------------------------------------------------------------
-# Create main.csv
+# Write main.csv
 # -------------------------------------------------------------
 lines = []
 lines.append(["run","forward"])
@@ -185,56 +181,52 @@ lines.append([])
 
 lines.append(["type","name","main node","model node"])
 
-# MOC line: (main node, model node) pairs
-# heart pair: (N15, H)
-moc_row = ["moc", "arterial", INLET_NODE, "H"]
-
-# perif pairs: (outlet_node, pX)
-for i, node in enumerate(outlet_nodes, start=1):
-    pid = f"p{i}"
-    moc_row.extend([node, pid])
-
+# MOC line:
+#  - Heart inlet: pair (N15, N15)
+#  - Each outlet: pair (Nout, Nout)
+moc_row = ["moc","arterial", HEART_INLET, HEART_INLET]
+for n in outlet_nodes:
+    moc_row.extend([n, n])
 lines.append(moc_row)
 lines.append([])
 
-# Lumped models:
-# heart model: heart_kim_lit, attached at global node N15, local node "aorta"
-lines.append(["lumped", "heart_kim_lit", INLET_NODE, "aorta"])
+# Lumped models
+# Heart model connected at HEART_INLET, internal heart node "aorta"
+lines.append(["lumped", "heart_kim_lit", HEART_INLET, "aorta"])
 
-# perif Windkessels: lumped,pX,global_node,local_node_in_pfile
-# local coupling node inside each pX.csv will be "n1" (like Abel_ref2 style)
-for i, node in enumerate(outlet_nodes, start=1):
-    pid = f"p{i}"
-    lines.append(["lumped", pid, node, "n1"])
+# One Windkessel model pX at each outlet, internal node "n1" (inside pX.csv)
+for i, n in enumerate(outlet_nodes):
+    pid = f"p{i+1}"
+    lines.append(["lumped", pid, n, "n1"])
 
 lines.append([])
 
-# Node list: all 1D nodes (0D internal nodes like n1, g, aorta are defined in p-files / heart file)
+# Node list: all 1D nodes (no need for extra interface nodes here)
 for n in unique_nodes_1d:
     lines.append(["node", n])
+
+# And a global node for the heart (optional but consistent with Abel_ref2)
+lines.append(["node", HEART_INLET])
 
 with open(MAIN_CSV, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerows(lines)
 
-print(f"[OK] V8: main.csv written with 1 heart model and {len(outlet_nodes)} Windkessels.")
-print(f"       Total global nodes: {len(unique_nodes_1d)}")
-
+print(f"[OK] V8: main.csv written to {MAIN_CSV}")
 
 # -------------------------------------------------------------
-# Generate Windkessel pX.csv files for each outlet
-# (Abel_ref2-like: local interface node = n1, internal node P1, ground g)
+# Generate Windkessel pX.csv files
 # -------------------------------------------------------------
 MU   = 0.0035
 RHO  = 1060.0
 E    = 4e6
-H_FRAC      = 0.10
-RPROX_FRAC  = 0.30
-MIN_R       = 1e6
-MIN_C       = 1e-12
-MIN_L       = 1e5
-MIN_Radius  = 2.5e-4
-MIN_Length  = 1e-3
+H_FRAC = 0.10
+RPROX_FRAC = 0.30
+MIN_R = 1e6
+MIN_C = 1e-12
+MIN_L = 1e5
+MIN_Radius = 2.5e-4
+MIN_Length = 1e-3
 
 def compute_R_total(r, L):
     return max((8.0 * MU * L) / (math.pi * r**4), MIN_R)
@@ -251,7 +243,7 @@ def compute_L(r, L):
         return MIN_L
     return max((RHO * L) / A, MIN_L)
 
-# Read ONLY artery rows from arterial.csv (before node/perif section)
+# Read ONLY artery rows from arterial.csv (up to blank line)
 artery_rows = []
 with open(ARTERIAL_CSV) as f:
     for line in f:
@@ -261,30 +253,27 @@ with open(ARTERIAL_CSV) as f:
 
 df_geo = pd.read_csv(StringIO("".join(artery_rows)))
 
-# build geometry info per node
 geo = {}
 for _, row in df_geo.iterrows():
     s = row["start_node"]
     e = row["end_node"]
     d = float(row["start_diameter[SI]"])
-    L = float(row["length[SI]"])
-    r = max(d * 0.5, MIN_Radius)
-    Lm = max(L, MIN_Length)
+    Lm = float(row["length[SI]"])
+    r  = max(d * 0.5, MIN_Radius)
+    Lm = max(Lm, MIN_Length)
     geo.setdefault(s, []).append((r, Lm))
     geo.setdefault(e, []).append((r, Lm))
 
 def avg_geo(node: str):
     if node not in geo:
-        # conservative fallback
         return (1.0e-3, 0.02)
     r = sum(g[0] for g in geo[node]) / len(geo[node])
     Lm = sum(g[1] for g in geo[node]) / len(geo[node])
     return r, Lm
 
-# create pX.csv
-for i, node in enumerate(outlet_nodes, start=1):
-    pid = f"p{i}"
-    r, Lm = avg_geo(node)
+for i, n in enumerate(outlet_nodes):
+    pid = f"p{i+1}"
+    r, Lm = avg_geo(n)
 
     Rtot  = compute_R_total(r, Lm)
     Rprox = max(RPROX_FRAC * Rtot, MIN_R)
@@ -297,28 +286,27 @@ for i, node in enumerate(outlet_nodes, start=1):
         w = csv.writer(f)
         w.writerow(["data of edges"])
         w.writerow(["type","name","node start","node end","initial condition [SI]","parameter [SI]"])
-        # Local coupling node = "n1"
-        w.writerow(["resistor", "R0", "n1",  "P1", 0.0, f"{Rprox:.3e}"])
-        w.writerow(["resistor", "R2", "P1",  "g",  0.0, f"{Rdist:.3e}"])
-        w.writerow(["capacitor","C1", "P1",  "g",  0.0, f"{Cval:.3e}"])
-        w.writerow(["inductor", "L1", "P1",  "g",  0.0, f"{Lin:.3e}"])
+        # Interface node is "n1" (matches 'model node' in main.csv)
+        w.writerow(["resistor", "R0", "n1", "P1", 0.0, f"{Rprox:.3e}"])
+        w.writerow(["resistor", "R2", "P1", "g",  0.0, f"{Rdist:.3e}"])
+        w.writerow(["capacitor", "C1", "P1", "g", 0.0, f"{Cval:.3e}"])
+        w.writerow(["inductor", "L1", "P1", "g", 0.0, f"{Lin:.3e}"])
         w.writerow([])
         w.writerow(["data of nodes"])
         w.writerow(["type","name","initial condition [SI]"])
-        w.writerow(["node",   "n1", 1.000e+05])
-        w.writerow(["node",   "P1", 1.000e+05])
-        w.writerow(["ground", "g",  1.000e+05])
+        w.writerow(["node","n1", 1.000e+05])
+        w.writerow(["node","P1", 1.000e+05])
+        w.writerow(["ground","g",1.000e+05])
 
 print(f"[OK] V8: wrote {len(outlet_nodes)} Windkessel p-files in {OUTPUT_DIR}")
 
-
 # -------------------------------------------------------------
-# Copy heart model file
+# Copy heart model
 # -------------------------------------------------------------
-if os.path.isfile(HEART_SRC):
-    shutil.copy2(HEART_SRC, HEART_DST)
-    print(f"[OK] V8: copied heart model from {HEART_SRC} to {HEART_DST}")
+if os.path.exists(ABEL_HEART):
+    shutil.copy2(ABEL_HEART, COW_HEART)
+    print(f"[OK] V8: copied heart model from {ABEL_HEART} to {COW_HEART}")
 else:
-    print(f"[WARN] V8: heart source file not found at {HEART_SRC}, heart model NOT copied.")
+    print(f"[WARN] V8: could not find {ABEL_HEART}, heart file not copied.")
 
 print("V8 generation complete.")

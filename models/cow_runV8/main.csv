@@ -4,7 +4,7 @@ material,linear
 solver,maccormack
 
 type,name,main node,model node
-moc,arterial,N15,H,N394,p1,N426,p2,N51,p3,N554,p4,N591,p5,N619,p6,N639,p7,N646,p8,N679,p9,N916,p10
+moc,arterial,N15,N15,N394,N394,N426,N426,N51,N51,N554,N554,N591,N591,N619,N619,N639,N639,N646,N646,N679,N679,N916,N916
 
 lumped,heart_kim_lit,N15,aorta
 lumped,p1,N394,n1
@@ -47,3 +47,4 @@ node,N809
 node,N848
 node,N884
 node,N916
+node,N15
