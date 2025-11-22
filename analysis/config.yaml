@@ -1,0 +1,5 @@
+# Path to your simulation results
+results_dir: "../projects/simple_run/results/cow_runV3"
+
+# Mapping of p-files to artery names (to fill later)
+probe_map: {}

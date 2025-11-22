@@ -1,0 +1,12 @@
+data of edges
+type,name,node start,node end,initial condition [SI],parameter [SI]
+resistor,R0,N916p,P1,0.0,1.000e+06
+resistor,R2,P1,g,0.0,1.000e+06
+capacitor,C1,P1,g,0.0,1.401e-11
+inductor,L1,P1,g,0.0,3.962e+04
+
+data of nodes
+type,name,initial condition [SI]
+node,N916p,100000.0
+node,P1,100000.0
+ground,g,100000.0
