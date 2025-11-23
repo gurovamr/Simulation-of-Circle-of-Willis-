@@ -30,7 +30,7 @@ BASELINE_P = 1.0e5  # reference pressure used in the solver [Pa]
 
 # Relative to this script's folder
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.join(HERE, "..", "projects", "simple_run", "results", "cow_runV8")
+BASE_DIR = os.path.join(HERE, "..", "projects", "simple_run", "results", "cow_runV8_synthetic_inflow")
 ARTERIAL_DIR = os.path.join(BASE_DIR, "arterial")
 HEART_DIR = os.path.join(BASE_DIR, "heart_kim_lit")
 
