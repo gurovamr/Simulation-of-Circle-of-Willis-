@@ -3,13 +3,13 @@ type, name, node start, node end, initial condition [SI], parameter [SI], parame
 
 
 Right Atrium
-voltage, V_ra, g, p_RA1, 0.000e+00, 8.0e+02
+voltage, V_ra, g, p_RA1, 0.000e+00, 8.0e+01
 inductor, L_ra, p_RA1, p_RA2, 0.000e+00, 5.000e+4
 diode, R_ra, p_RA2, p_RA3, 0.000e+00, 1.000e+06
 
 
 Right Ventrice
-elastance, E_rv, g2, p_RA3, 0.000e+00, 6.67e+07, 8.0e+06
+elastance, E_rv, g2, p_RA3, 0.000e+00, 6.67e+06, 8.0e+05
 inductor, L_rv, p_RA3, p_RV1, 0.000e+00, 2.50e+04
 diode, R_rv, p_RV1, p_RV2, 0.000e+00, 2.000e+06
 
@@ -26,7 +26,7 @@ diode, R_la, p_LA2, p_LA3, 0.000e+00, 5.000e+05
 
 
 Left Ventrice
-elastance, E_lv, g1, p_LA3, 0.000e+00, 2.67e+08, 8.0e+06
+elastance, E_lv, g1, p_LA3, 0.000e+00, 2.67e+07, 8.0e+05
 inductor, L_lv_aorta, p_LA3, p_LV1, 0.000e+00, 6.50e+04
 diode, R_lv_aorta, p_LV1, aorta, 0.000e+00, 1.00e+06
 
