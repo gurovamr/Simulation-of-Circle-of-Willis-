@@ -1,0 +1,12 @@
+data of edges
+type,name,node start,node end,initial condition [SI],parameter [SI]
+resistor,R0,n1,P1,0,351945.6453180084
+resistor,R2,P1,g,0,821206.5057420195
+capacitor,C1,P1,g,0,1.4012763799062731e-11
+inductor,L1,P1,g,0,39619.236287785985
+
+data of nodes
+type,name,initial condition [SI]
+node,n1,100000
+node,P1,100000
+ground,g,100000
