@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-V12_generate_data.py
+V13_generate_data.py
 
 Builds a 1D Circle of Willis model for a single patient using:
  - feature_mr_XXX.json : segment radii / lengths
  - nodes_mr_XXX.json   : anatomical junction nodes
  - varient_mr_XXX.json : CoW configuration (not yet used for pruning)
 
-Compared to V11, V12 explicitly adds short "connector" segments so that
-the whole CoW (BA + PCA + Pcom + ICA + MCA + ACA + Acom) is one
-topologically connected arterial network.
+Compared to V12:
+ - Heart inlet is NOT hard-coded at basilar (N15).
+ - Instead, inlet is chosen automatically from a carotid/ICA-type node
+   (physiological), and N15 becomes a posterior terminal with a Windkessel.
 """
 
 import json
@@ -27,7 +28,6 @@ MODEL_NAME  = "cow_runV12"                 # folder name in ../models
 INPUT_DIR   = "../data_patient025"         # raw JSON dir for this patient
 
 PATIENT_ID  = "025"                        # only used to build file names
-HEART_INLET_NODE_ID = 15                   # BA inlet node id -> "N15"
 
 FEATURE_FILE = os.path.join(INPUT_DIR, f"feature_mr_{PATIENT_ID}.json")
 NODES_FILE   = os.path.join(INPUT_DIR, f"nodes_mr_{PATIENT_ID}.json")
@@ -44,7 +44,7 @@ ABEL_HEART = "../models/Abel_ref2/heart_kim_lit.csv"
 COW_HEART  = os.path.join(OUTPUT_DIR, "heart_kim_lit.csv")
 
 # Short technical connectors (between bifurcation and boundary nodes)
-CONNECTOR_LENGTH_M = 1.0e-3  # 1 mm
+CONNECTOR_LENGTH_M = 4.0e-3  # 1 mm
 
 # -------------------------------------------------------------
 # Helper functions
@@ -100,8 +100,7 @@ def get_node_id(group_key: str, label: str) -> int:
     return nodes_data[group_key][label][0]["id"]
 
 # -------------------------------------------------------------
-# Build 1D arterial network from feature_data
-# (base segments only, no connectors yet)
+# Build 1D arterial network from feature_data (base segments)
 # -------------------------------------------------------------
 arterial_header = [
     "type","ID","name","start_node","end_node",
@@ -153,6 +152,7 @@ for group_id, segments in feature_data.items():
 
 # -------------------------------------------------------------
 # Add short connector segments so that CoW is topologically connected
+# (same as V12)
 # -------------------------------------------------------------
 def add_connector_segment(ID: str,
                           name: str,
@@ -204,14 +204,9 @@ PCOMR_PCA_BND  = get_node_id("8", "PCA boundary")
 PCOML_PCA_BND  = get_node_id("9", "PCA boundary")
 PCOMR_ICA_BIF  = get_node_id("4", "Pcom bifurcation")
 PCOML_ICA_BIF  = get_node_id("6", "Pcom bifurcation")
-PCOMR_ICA_BND  = get_node_id("8", "ICA boundary")
-PCOML_ICA_BND  = get_node_id("9", "ICA boundary")
 
-# P1 side -> PCA-side Pcom boundary
 add_connector_segment("P1R_to_Pcom", "Pcom_conn", P1R_PCOM_BIF, PCOMR_PCA_BND, "2", "P1")
 add_connector_segment("P1L_to_Pcom", "Pcom_conn", P1L_PCOM_BIF, PCOML_PCA_BND, "3", "P1")
-
-# ICA-side Pcom boundary -> ICA trunk Pcom bifurcation
 add_connector_segment("PcomR_to_ICA", "Pcom_conn", PCOMR_PCA_BND, PCOMR_ICA_BIF, "8", "Pcom")
 add_connector_segment("PcomL_to_ICA", "Pcom_conn", PCOML_PCA_BND, PCOML_ICA_BIF, "9", "Pcom")
 
@@ -237,17 +232,64 @@ add_connector_segment("ICA_L_to_A1", "ICA_A1_conn", ICA_L_BIF, ACA_L_BOUNDARY, "
 unique_nodes_1d = sorted({a["start_node"] for a in arteries} |
                          {a["end_node"]   for a in arteries})
 
-print(f"[OK] V12: 1D network has {len(arteries)} arteries and {len(unique_nodes_1d)} nodes.")
+print(f"[OK] V13: 1D network has {len(arteries)} arteries and {len(unique_nodes_1d)} nodes.")
 
 # -------------------------------------------------------------
-# Choose heart inlet and detect outlet (terminal) nodes
+# Auto-select a physiological heart inlet (ICA / carotid)
 # -------------------------------------------------------------
-HEART_INLET = f"N{HEART_INLET_NODE_ID}"
+def detect_inlet_node(arteries):
+    """
+    Automatically choose a physiologically reasonable inlet node.
+    Rules:
+      1. Prefer extracranial carotid / ICA-like names (cca, common, carotid).
+      2. Then any 'ICA' segment.
+      3. Then vertebral arteries (va, vertebral).
+      4. Never explicitly choose BA as inlet.
+      5. Fallback: largest diameter segment's start node.
+    """
+
+    def name_contains(art, words):
+        v = art["name"].lower()
+        return any(w.lower() in v for w in words)
+
+    # Step 1: extracranial CCA / ICA / carotid
+    extracranial_keywords = ["cca", "common", "extracranial", "carotid"]
+    for art in arteries:
+        if name_contains(art, extracranial_keywords):
+            return art["start_node"]
+
+    # Step 2: any ICA
+    for art in arteries:
+        if name_contains(art, ["ica"]):
+            return art["start_node"]
+
+    # Step 3: vertebral arteries
+    for art in arteries:
+        if name_contains(art, ["va", "vertebral"]):
+            return art["start_node"]
+
+    # Step 4: do NOT special-case BA here (we just don't search for "ba")
+
+    # Step 5: fallback – largest diameter
+    print("[WARN] V13: inlet selection fallback: largest-diameter vessel.")
+    best_node = None
+    best_d = -1.0
+    for art in arteries:
+        d = float(art["start_diameter[SI]"])
+        if d > best_d:
+            best_d = d
+            best_node = art["start_node"]
+    return best_node
+
+HEART_INLET = detect_inlet_node(arteries)
+print(f"[INFO] V13: auto-selected heart inlet = {HEART_INLET}")
 
 if HEART_INLET not in unique_nodes_1d:
-    raise RuntimeError(f"Chosen heart inlet {HEART_INLET} is not a 1D node in this network.")
+    raise RuntimeError(f"Auto-selected heart inlet {HEART_INLET} is not a 1D node in this network.")
 
-# Degree count to find terminals
+# -------------------------------------------------------------
+# Detect terminal nodes & choose outlets (all degree-1 except inlet)
+# -------------------------------------------------------------
 degree = {}
 for art in arteries:
     s = art["start_node"]
@@ -256,14 +298,14 @@ for art in arteries:
     degree[e] = degree.get(e, 0) + 1
 
 terminal_nodes = sorted([n for n, d in degree.items() if d == 1])
-print(f"[INFO] V12: raw terminal nodes = {terminal_nodes}")
+print(f"[INFO] V13: raw terminal nodes = {terminal_nodes}")
 
 if HEART_INLET not in terminal_nodes:
-    print(f"[WARN] V12: {HEART_INLET} is not degree-1, but will still be used as heart inlet.")
+    print(f"[WARN] V13: {HEART_INLET} is not degree-1, but still used as inlet.")
 
 outlet_nodes = [n for n in terminal_nodes if n != HEART_INLET]
-print(f"[INFO] V12: using {HEART_INLET} as heart inlet.")
-print(f"[INFO] V12: using {len(outlet_nodes)} outlet nodes for Windkessels:")
+print(f"[INFO] V13: using {HEART_INLET} as heart inlet.")
+print(f"[INFO] V13: using {len(outlet_nodes)} outlet nodes for Windkessels:")
 print("       ", outlet_nodes)
 
 # -------------------------------------------------------------
@@ -291,7 +333,7 @@ with open(ARTERIAL_CSV, "w", newline="") as f:
         pid = f"p{i+1}"
         f.write(f"perif,{pid},0,,\n")
 
-print(f"[OK] V12: arterial.csv written -> {ARTERIAL_CSV}")
+print(f"[OK] V13: arterial.csv written -> {ARTERIAL_CSV}")
 
 # -------------------------------------------------------------
 # Write main.csv  (heart + CoW + Windkessels)
@@ -305,8 +347,7 @@ lines.append([])
 
 lines.append(["type","name","main node","model node"])
 
-# MOC line:
-#  - Pair (node, node) for every 1D node so that solver can map
+# MOC line: map every 1D node
 moc_row = ["moc", "arterial"]
 for n in unique_nodes_1d:
     moc_row.extend([n, n])
@@ -324,7 +365,7 @@ for i, n in enumerate(outlet_nodes):
 
 lines.append([])
 
-# Node list: all 1D nodes (no extra interface nodes)
+# Node list: all 1D nodes
 for n in unique_nodes_1d:
     lines.append(["node", n])
 
@@ -332,7 +373,7 @@ with open(MAIN_CSV, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerows(lines)
 
-print(f"[OK] V12: main.csv written -> {MAIN_CSV}")
+print(f"[OK] V13: main.csv written -> {MAIN_CSV}")
 
 # -------------------------------------------------------------
 # Generate Windkessel pX.csv files
@@ -392,6 +433,7 @@ def avg_geo(node: str):
     Lm = sum(g[1] for g in geo[node]) / len(geo[node])
     return r, Lm
 
+outlet_count = 0
 for i, n in enumerate(outlet_nodes):
     pid = f"p{i+1}"
     r, Lm = avg_geo(n)
@@ -418,16 +460,17 @@ for i, n in enumerate(outlet_nodes):
         w.writerow(["node","n1", 1.000e+05])
         w.writerow(["node","P1", 1.000e+05])
         w.writerow(["ground","g",1.000e+05])
+    outlet_count += 1
 
-print(f"[OK] V12: wrote {len(outlet_nodes)} Windkessel p-files in {OUTPUT_DIR}")
+print(f"[OK] V13: wrote {outlet_count} Windkessel p-files in {OUTPUT_DIR}")
 
 # -------------------------------------------------------------
 # Copy heart model (you already weakened it manually once)
 # -------------------------------------------------------------
 if os.path.exists(ABEL_HEART):
     shutil.copy2(ABEL_HEART, COW_HEART)
-    print(f"[OK] V12: copied heart model from {ABEL_HEART} to {COW_HEART}")
+    print(f"[OK] V13: copied heart model from {ABEL_HEART} to {COW_HEART}")
 else:
-    print(f"[WARN] V12: could not find {ABEL_HEART}, heart file not copied.")
+    print(f"[WARN] V13: could not find {ABEL_HEART}, heart file not copied.")
 
 print("V12 generation complete.")
