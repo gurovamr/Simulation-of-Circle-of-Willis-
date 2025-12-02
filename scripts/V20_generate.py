@@ -14,12 +14,19 @@ OUTPUT_DIR_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 
 MODEL_NAME = "cow_runV20" 
 FULL_OUTPUT_PATH = os.path.join(OUTPUT_DIR_BASE, MODEL_NAME)
 
+# Path to the Reference Heart Model (Adjust this if needed)
 PATH_TO_REF_HEART = "../models/Abel_ref2/heart_kim_lit.csv" 
 
+# Material Properties
 MAT_PROPS_CEREBRAL = { "visc_fact": 2.75, "k1": 2.0e6, "k2": -2253.0, "k3": 8.65e4, "elastance": 1.5e6 }
 WK_PROPS = { "R_prox": 1.45e8, "R_dist": 1.0e9, "C": 8.0e-10, "L": 5.0e4 }
 
-INTERFACES = { "Basilar_Inlet": "n49", "R_ICA_Inlet": "n43", "L_ICA_Inlet": "n40" }
+# Interface Nodes (Where Patient Brain connects to Static Body)
+INTERFACES = {
+    "Basilar_Inlet": "n49", # End of Body Basilar
+    "R_ICA_Inlet": "n43",   # End of Body Right ICA
+    "L_ICA_Inlet": "n40"    # End of Body Left ICA
+}
 
 # ==========================================
 # 2. STATIC BODY DATA (Vessels AND Nodes)

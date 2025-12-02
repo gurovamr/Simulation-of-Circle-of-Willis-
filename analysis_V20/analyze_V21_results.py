@@ -9,7 +9,7 @@ from io import StringIO
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-RESULTS_DIR = os.path.abspath(os.path.join("..", "projects", "simple_run", "results", "cow_runV20", "arterial"))
+RESULTS_DIR = os.path.abspath(os.path.join("..", "projects", "simple_run", "results", "cow_runV21", "arterial"))
 
 # Standard Atmospheric Pressure in Pa (used by First Blood)
 P_ATM = 1.0e5 
@@ -22,7 +22,7 @@ INTEREST_VESSELS = {
     "P_LP1": "Left P1"
 }
 
-OUTPUT_PLOT_DIR = "plots"
+OUTPUT_PLOT_DIR = "plots21"
 if not os.path.exists(OUTPUT_PLOT_DIR):
     os.makedirs(OUTPUT_PLOT_DIR)
 

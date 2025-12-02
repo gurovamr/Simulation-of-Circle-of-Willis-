@@ -1,5 +1,49 @@
-type,ID,name,start_node,end_node,start_diameter[SI],end_diameter[SI],start_thickness[SI],end_thickness[SI],length[SI],division_points,elastance_1[SI],res_start[SI],res_end[SI],visc_fact[1],k1[SI],k2[SI],k3[SI]
-vis_f,A1,Ascending aorta 1,H,n1,0.0294,0.0293,0.00294,0.00293,0.005,5,2.92E+05,0,0,2.75,2.e6,-2253.,8.65e4
+import json
+import math
+import os
+import shutil
+
+# ==========================================
+# 1. CONFIGURATION
+# ==========================================
+PATIENT_ID = "025" 
+RAW_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", f"data_patient{PATIENT_ID}"))
+
+OUTPUT_DIR_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
+MODEL_NAME = "cow_runV21"  # New version V22
+FULL_OUTPUT_PATH = os.path.join(OUTPUT_DIR_BASE, MODEL_NAME)
+
+# --- TUNED PARAMETERS FOR SYSTEMIC PRESSURE ---
+MAT_PROPS_CEREBRAL = { 
+    "visc_fact": 2.75, 
+    "k1": 2.5e6,      
+    "k2": -2253.0, 
+    "k3": 8.65e4, 
+    "elastance": 4.0e5 
+}
+
+# WINDKESSEL PARAMETERS
+# KEY CHANGE: Increased Resistance for Body Outlets to build pressure
+WK_PROPS_BRAIN = { 
+    "R_prox": 2.0e8, 
+    "R_dist": 2.5e9, # 2.5 billion
+    "C": 5.0e-10,
+}
+
+# Body needs higher resistance to sustain 100 mmHg across the whole system
+WK_PROPS_BODY = {
+    "R_prox": 5.0e8,
+    "R_dist": 1.5e10, # 15 billion (Stronger resistance for body)
+    "C": 1.0e-10,
+}
+
+INTERFACES = { "Basilar_Inlet": "n49", "R_ICA_Inlet": "n43", "L_ICA_Inlet": "n40" }
+
+# ==========================================
+# 2. STATIC BODY DATA
+# ==========================================
+# (Same Aorta-to-Neck vessels as before)
+STATIC_VESSELS = """vis_f,A1,Ascending aorta 1,H,n1,0.0294,0.0293,0.00294,0.00293,0.005,5,2.92E+05,0,0,2.75,2.e6,-2253.,8.65e4
 vis_f,A2,Aortic arch A,n2,n3,0.0251,0.024,0.00251,0.0024,0.02,5,3.19E+05,0,0,2.75,2.e6,-2253.,8.65e4
 vis_f,A3,Brachiocephalic,n2,n6,0.0202,0.018,0.00202,0.0018,0.034,6,3.62E+05,0,0,2.75,2.e6,-2253.,8.65e4
 vis_f,A4,Subclavian A,n6,n7,0.0115,0.009,0.00115,0.0009,0.034,5,5.06E+05,0,0,2.75,2.e6,-2253.,8.65e4
@@ -84,22 +128,9 @@ vis_f,A102,Ant. choroidal,n39,p46,0.0015,0.0013,0.00015,0.00013,0.036,5,1.64E+06
 vis_f,A66,ICA distal PCo–ant. chor. seg.,n45,n44,0.0039,0.0038,0.00039,0.00038,0.002,5,8.80E+05,0,0,2.75,2.e6,-2253.,8.65e4
 vis_f,A67,ICA distal PCo–ant. chor. seg.,n38,n39,0.0039,0.0038,0.00039,0.00038,0.002,5,8.80E+05,0,0,2.75,2.e6,-2253.,8.65e4
 vis_f,A101,ICA distal cnt. chor.–M1 seg.,n44,n43,0.0038,0.0038,0.00038,0.00038,0.002,5,8.87E+05,0,0,2.75,2.e6,-2253.,8.65e4
-vis_f,A103,ICA distal cnt. chor.–M1 seg.,n39,n40,0.0038,0.0038,0.00038,0.00038,0.002,5,8.87E+05,0,0,2.75,2.e6,-2253.,8.65e4
-vis_f,P_BA,Pat_Basilar,n49,cow_n1,0.004238,0.004238,0.000424,0.000424,0.012237,6,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RP1,Pat_R_P1,cow_n1,cow_n2,0.002050,0.002050,0.000205,0.000205,0.013305,6,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LP1,Pat_L_P1,cow_n1,cow_n3,0.003404,0.003404,0.000340,0.000340,0.005941,3,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RPcom,Pat_R_Pcom,n43,cow_n2,0.002830,0.002830,0.000283,0.000283,0.014025,7,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LPcom,Pat_L_Pcom,n40,cow_n3,0.000906,0.000906,0.000091,0.000091,0.015275,7,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RA1,Pat_R_A1,n43,cow_n4,0.002926,0.002926,0.000293,0.000293,0.017317,8,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LA1,Pat_L_A1,n40,cow_n5,0.003274,0.003274,0.000327,0.000327,0.015276,7,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_Acom,Pat_Acom,cow_n4,cow_n5,0.003806,0.003806,0.000381,0.000381,0.001676,3,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RMCA,Pat_R_MCA,n43,out_rmca,0.003592,0.003592,0.000359,0.000359,0.008820,4,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LMCA,Pat_L_MCA,n40,out_lmca,0.003676,0.003676,0.000368,0.000368,0.010083,5,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RP2,Pat_R_P2,cow_n2,out_rp2,0.002520,0.002520,0.000252,0.000252,0.009869,4,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LP2,Pat_L_P2,cow_n3,out_lp2,0.003088,0.003088,0.000309,0.000309,0.010046,5,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_RA2,Pat_R_A2,cow_n4,out_ra2,0.003340,0.003340,0.000334,0.000334,0.010063,5,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
-vis_f,P_LA2,Pat_L_A2,cow_n5,out_la2,0.003432,0.003432,0.000343,0.000343,0.010038,5,1.50E+06,0,0,2.75,2.00E+06,-2.25E+03,8.65E+04
+vis_f,A103,ICA distal cnt. chor.–M1 seg.,n39,n40,0.0038,0.0038,0.00038,0.00038,0.002,5,8.87E+05,0,0,2.75,2.e6,-2253.,8.65e4"""
 
+STATIC_NODES = """
 type,ID,name,valami,parameter,file name
 heart,H,0,
 node,n1,0,5.27E+11,
@@ -201,15 +232,265 @@ perif,p43,0,,
 perif,p44,0,,
 perif,p45,0,,
 perif,p46,0,,
-perif,p47,0,,
-node,cow_n1,0,4.27E+10,
-node,cow_n5,0,4.27E+10,
-node,cow_n2,0,4.27E+10,
-node,cow_n3,0,4.27E+10,
-node,cow_n4,0,4.27E+10,
-perif,out_rmca,0,,
-perif,out_lmca,0,,
-perif,out_rp2,0,,
-perif,out_lp2,0,,
-perif,out_ra2,0,,
-perif,out_la2,0,,
+perif,p47,0,,"""
+
+# ==========================================
+# 3. HELPER FUNCTIONS
+# ==========================================
+def load_json(filename):
+    path = os.path.join(RAW_DATA_DIR, filename)
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"CRITICAL ERROR: Could not find file at: {path}")
+        exit(1)
+
+feat_data = load_json(f'feature_mr_{PATIENT_ID}.json')
+nodes_data = load_json(f'nodes_mr_{PATIENT_ID}.json')
+variant_data = load_json(f'variant_mr_{PATIENT_ID}.json')
+
+def get_coords(node_id):
+    for label_group in nodes_data.values():
+        for node_list in label_group.values():
+            for node in node_list:
+                if node.get('id') == node_id and 'coords' in node:
+                    return node['coords']
+    return None
+
+def calc_gap_meters(id1, id2):
+    c1 = get_coords(id1)
+    c2 = get_coords(id2)
+    if c1 and c2:
+        dist_mm = math.sqrt(sum((a - b)**2 for a, b in zip(c1, c2)))
+        return dist_mm / 1000.0
+    return 0.0
+
+def get_geom(label_id, segment_name):
+    try:
+        group = feat_data.get(str(label_id))
+        if not group: return 0.0015, 0.01
+        seg_data = group.get(segment_name)
+        if isinstance(seg_data, list): data = seg_data[0]
+        else: data = seg_data
+        r_mm = data['radius']['median']
+        l_mm = data['length']
+        return (r_mm / 1000.0), (l_mm / 1000.0)
+    except Exception:
+        return 0.0015, 0.01
+
+def fmt_artery(id_str, name, start, end, r_m, l_m):
+    d = r_m * 2.0
+    h = d * 0.1
+    N = max(3, int(l_m * 1000 / 2)) 
+    return (f"vis_f,{id_str},{name},{start},{end},"
+            f"{d:.6f},{d:.6f},{h:.6f},{h:.6f},{l_m:.6f},{N},"
+            f"{MAT_PROPS_CEREBRAL['elastance']:.2E},0,0,"
+            f"{MAT_PROPS_CEREBRAL['visc_fact']},"
+            f"{MAT_PROPS_CEREBRAL['k1']:.2E},{MAT_PROPS_CEREBRAL['k2']:.2E},{MAT_PROPS_CEREBRAL['k3']:.2E}")
+
+# ==========================================
+# 4. GENERATION
+# ==========================================
+def generate_arterial(output_path):
+    lines = ["type,ID,name,start_node,end_node,start_diameter[SI],end_diameter[SI],start_thickness[SI],end_thickness[SI],length[SI],division_points,elastance_1[SI],res_start[SI],res_end[SI],visc_fact[1],k1[SI],k2[SI],k3[SI]"]
+    lines.append(STATIC_VESSELS)
+
+    outlets = []
+    junction_nodes = set(["cow_n1", "cow_n2", "cow_n3", "cow_n4", "cow_n5"])
+    
+    # Basilar
+    r, l = get_geom(1, "BA")
+    gap = calc_gap_meters(51, 59)
+    lines.append(fmt_artery("P_BA", "Pat_Basilar", INTERFACES["Basilar_Inlet"], "cow_n1", r, l + gap))
+
+    # P1
+    if variant_data['posterior']['R-P1']:
+        r, l = get_geom(2, "P1")
+        lines.append(fmt_artery("P_RP1", "Pat_R_P1", "cow_n1", "cow_n2", r, l))
+    if variant_data['posterior']['L-P1']:
+        r, l = get_geom(3, "P1")
+        lines.append(fmt_artery("P_LP1", "Pat_L_P1", "cow_n1", "cow_n3", r, l))
+
+    # Pcom
+    if variant_data['posterior']['R-Pcom']:
+        r, l = get_geom(8, "Pcom")
+        gap = calc_gap_meters(389, 619)
+        lines.append(fmt_artery("P_RPcom", "Pat_R_Pcom", INTERFACES["R_ICA_Inlet"], "cow_n2", r, l + gap))
+    if variant_data['posterior']['L-Pcom']:
+        r, l = get_geom(9, "Pcom")
+        gap = calc_gap_meters(545, 527)
+        lines.append(fmt_artery("P_LPcom", "Pat_L_Pcom", INTERFACES["L_ICA_Inlet"], "cow_n3", r, l + gap))
+
+    # A1
+    if variant_data['anterior']['R-A1']:
+        r, l = get_geom(11, "A1")
+        gap = calc_gap_meters(389, 689)
+        lines.append(fmt_artery("P_RA1", "Pat_R_A1", INTERFACES["R_ICA_Inlet"], "cow_n4", r, l + gap))
+    if variant_data['anterior']['L-A1']:
+        r, l = get_geom(12, "A1")
+        gap = calc_gap_meters(545, 809)
+        lines.append(fmt_artery("P_LA1", "Pat_L_A1", INTERFACES["L_ICA_Inlet"], "cow_n5", r, l + gap))
+
+    # Acom
+    if variant_data['anterior']['Acom']:
+        r, l = get_geom(10, "Acom")
+        lines.append(fmt_artery("P_Acom", "Pat_Acom", "cow_n4", "cow_n5", r, l))
+
+    # TERMINAL OUTLETS
+    r, l = get_geom(5, "MCA")
+    lines.append(fmt_artery("P_RMCA", "Pat_R_MCA", INTERFACES["R_ICA_Inlet"], "out_rmca", r, l))
+    outlets.append("out_rmca")
+    
+    r, l = get_geom(7, "MCA")
+    lines.append(fmt_artery("P_LMCA", "Pat_L_MCA", INTERFACES["L_ICA_Inlet"], "out_lmca", r, l))
+    outlets.append("out_lmca")
+
+    r, l = get_geom(2, "P2")
+    lines.append(fmt_artery("P_RP2", "Pat_R_P2", "cow_n2", "out_rp2", r, l))
+    outlets.append("out_rp2")
+
+    r, l = get_geom(3, "P2")
+    lines.append(fmt_artery("P_LP2", "Pat_L_P2", "cow_n3", "out_lp2", r, l))
+    outlets.append("out_lp2")
+
+    r, l = get_geom(11, "A2")
+    lines.append(fmt_artery("P_RA2", "Pat_R_A2", "cow_n4", "out_ra2", r, l))
+    outlets.append("out_ra2")
+
+    r, l = get_geom(12, "A2")
+    lines.append(fmt_artery("P_LA2", "Pat_L_A2", "cow_n5", "out_la2", r, l))
+    outlets.append("out_la2")
+
+    lines.append(STATIC_NODES)
+
+    # Add new Junctions
+    for node in junction_nodes:
+        lines.append(f"node,{node},0,4.27E+10,") 
+    
+    # Add new Outlets
+    for node in outlets:
+        lines.append(f"perif,{node},0,,")
+
+    with open(output_path, 'w') as f:
+        f.write("\n".join(lines))
+    return outlets
+
+def generate_main(outlets, output_path):
+    content = """run,forward
+time,10.0
+material,linear
+solver,maccormack
+
+type,name,main node,model node
+moc,arterial,Heart,H
+
+lumped,heart_kim_lit,Heart,aorta
+"""
+    for i in range(1, 48):
+        content += f"lumped,p{i},p{i},n1\n"
+
+    for out in outlets:
+        content += f"lumped,{out},{out},n1\n"
+
+    content += "\nnode,Heart\n"
+    with open(output_path, 'w') as f:
+        f.write(content)
+
+def generate_windkessel_files(outlets, output_dir):
+    # Template for BODY outlets (High Resistance)
+    def wk_body(proximal_node):
+        return f"""data of edges
+type, name, node start, node end, initial condition [SI], parameter [SI]
+resistor, R_prox, {proximal_node}, p_mid, 0.0, {WK_PROPS_BODY['R_prox']:.2E}
+resistor, R_dist, p_mid, g, 0.0, {WK_PROPS_BODY['R_dist']:.2E}
+capacitor, C_wk, p_mid, g, 0.0, {WK_PROPS_BODY['C']:.2E}
+
+data of nodes
+type, name, initial condition [SI]
+node, {proximal_node}, 1.00e+05
+node, p_mid, 1.00e+05
+ground, g, 1.00e+05
+"""
+    # Template for BRAIN outlets
+    def wk_brain(proximal_node):
+        return f"""data of edges
+type, name, node start, node end, initial condition [SI], parameter [SI]
+resistor, R_prox, {proximal_node}, p_mid, 0.0, {WK_PROPS_BRAIN['R_prox']:.2E}
+resistor, R_dist, p_mid, g, 0.0, {WK_PROPS_BRAIN['R_dist']:.2E}
+capacitor, C_wk, p_mid, g, 0.0, {WK_PROPS_BRAIN['C']:.2E}
+
+data of nodes
+type, name, initial condition [SI]
+node, {proximal_node}, 1.00e+05
+node, p_mid, 1.00e+05
+ground, g, 1.00e+05
+"""
+
+    # Generate Brain Files
+    for out_node in outlets:
+        with open(os.path.join(output_dir, f"{out_node}.csv"), 'w') as f:
+            f.write(wk_brain("n1"))
+            
+    # Generate Body Files (p1..p47) with HIGHER RESISTANCE
+    for i in range(1, 48):
+        name = f"p{i}"
+        with open(os.path.join(output_dir, f"{name}.csv"), 'w') as f:
+            f.write(wk_body("n1"))
+
+def write_calibrated_heart(output_dir):
+    content = """type, name, node start, node end, initial condition [SI], parameter [SI], parameter [SI]
+Right Atrium
+voltage, V_ra, g, p_RA1, 0.000e+00, 8.0e+02
+inductor, L_ra, p_RA1, p_RA2, 0.000e+00, 5.000e+4
+diode, R_ra, p_RA2, p_RA3, 0.000e+00, 1.000e+06
+Right Ventrice
+elastance, E_rv, g2, p_RA3, 0.000e+00, 6.67e+07, 8.0e+06
+inductor, L_rv, p_RA3, p_RV1, 0.000e+00, 2.50e+04
+diode, R_rv, p_RV1, p_RV2, 0.000e+00, 2.000e+06
+P
+resistor, R_pa, p_RV2, p_LA1, 0.000e+00, 1.2e+07
+capacitor, C_pa, g, p_RV2, 0.000e+00, 3.0e-08
+Left Atrium
+capacitor, E_la, g3, p_LA1, 0.000e+00, 3.60e-08
+inductor, L_la, p_LA1, p_LA2, 0.000e+00, 1.00e+04
+diode, R_la, p_LA2, p_LA3, 0.000e+00, 5.000e+05
+Left Ventrice
+elastance, E_lv, g1, p_LA3, 0.000e+00, 2.50e+08, 8.0e+06
+inductor, L_lv_aorta, p_LA3, p_LV1, 0.000e+00, 6.50e+04
+diode, R_lv_aorta, p_LV1, aorta, 0.000e+00, 1.00e+06
+
+data of nodes
+type, name, initial condition [SI]
+node, aorta, 1.13e+05
+ground, g, 1.00e+05
+ground, g1, 1.00e+05
+ground, g2, 1.00e+05
+ground, g3, 1.00e+05
+node, p_RA1, 1.010e+05
+node, p_RA2, 1.010e+05
+node, p_RA3, 1.010e+05
+node, p_RV1, 1.010e+05
+node, p_RV2, 1.010e+05
+node, p_LA1, 1.0110e+05
+node, p_LA2, 1.0110e+05
+node, p_LA3, 1.0110e+05
+node, p_LV1, 1.0110e+05
+"""
+    with open(os.path.join(output_dir, "heart_kim_lit.csv"), 'w') as f:
+        f.write(content)
+
+# ==========================================
+# 5. EXECUTION
+# ==========================================
+if __name__ == "__main__":
+    if not os.path.exists(FULL_OUTPUT_PATH):
+        os.makedirs(FULL_OUTPUT_PATH)
+    
+    outlets = generate_arterial(os.path.join(FULL_OUTPUT_PATH, 'arterial.csv'))
+    generate_main(outlets, os.path.join(FULL_OUTPUT_PATH, 'main.csv'))
+    write_calibrated_heart(FULL_OUTPUT_PATH)
+    generate_windkessel_files(outlets, FULL_OUTPUT_PATH)
+    
+    print(f"\nSETUP V22 COMPLETE.")
+    print(f"Run this command:\ncd ../projects/simple_run\n./simple_run.out {MODEL_NAME}")
